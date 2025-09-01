@@ -5,7 +5,7 @@ Made for specific mission of the same name. Could be used for others, but would 
 assert(loadfile(lfs.writedir() .. "Missions/Huey/PersistentCampaign/patrolLift.lua"))()
 
 TODO
-spawn pathfinders with spawnGrunts
+change pathfinder marker table to save them by name, add markremove to remove them from the list.
 ]]
 if not Wrench then 
     trigger.action.outText("WrenchFunctions.lua Required for PatrolLift!!" , 10 , false)
@@ -100,6 +100,7 @@ function patrolLift.loop()
             STTS.TextToSpeech("beacons are being reset to 30","116","AM","1.0","SRS",2,nil,-1,"male")
         end
     end
+    myLog:msg("loop done")
 end
 
 function patrolLift.scanForBluePatrols(blueGroups)
@@ -126,7 +127,7 @@ function patrolLift.scanForBluePatrols(blueGroups)
     for k,v in pairs(Groupnames) do
         if not patrolLift.assignedGroups[v] then
             if string.find(v,"pathfinder") then
-                pathfinder.route(v)
+                pathfinder.route2(v)
                 patrolLift.assignedGroups[v] = v
             elseif string.find(v,"patrolExclude") then
             else
@@ -359,6 +360,7 @@ function patrolLift.addEmbarkToWp(wp,name)
 end
 
 function patrolLift.activateBeacon(gpName,pos,contact)
+    myLog:msg("patrolLift.activateBeacon")
     local grp = Group.getByName(gpName)
     local con = grp:getController()
     local SetFrequency = { 
@@ -470,6 +472,7 @@ function patrolLift.plusMinusDist(pos)
 end
 
 function patrolLift.checkContact()
+myLog:msg("patrolLift.checkContact")
     for k,v in pairs(patrolLift.assignedGroups) do
         if not patrolLift.groupsInContact[v] then
             local grpClass = Group.getByName(v)
@@ -484,6 +487,22 @@ function patrolLift.checkContact()
                 if dist < 700 then
                     patrolLift.groupsInContact[v] = {["friendly"] = grpClass, ['enemy'] = targets[1]['object']}
                     patrolLift.contactMessage(v)
+
+                    -- route --
+                    local enemy = patrolLift.groupsInContact[gpName]['enemy']
+                    local enemypos = Unit.getPosition(enemy).p
+                    local Units = mist.makeUnitTable({"[g]" .. v})
+                    local pos = mist.getAvgPos(Units)
+                    local points = {}
+                    points[1] = pos
+                    points[2] = enemypos
+                    local route = {}
+                    for i=1,#points do
+                        route[i] = mist.ground.buildWP(points[i] , "Custom" ,40)
+                        route[i]["action"] = "Custom"
+                    end
+                    mist.scheduleFunction(mist.goRoute, {group,route}, timer.getTime() + 1, 900, timer.getTime() + 10)
+                    --end route --
                 end
             end
         end
@@ -495,6 +514,7 @@ function patrolLift.checkContact()
             patrolLift.groupsInContact[k] = nil
             status, err = pcall(function()
                 patrolLift.stopBeacon(k)
+                patrolLift.patrolBlue(grpClass)
             end)
             if not status then 
                 myLog:msg(err)
@@ -505,6 +525,7 @@ function patrolLift.checkContact()
 end
 
 function patrolLift.contactMessage(grpName)
+myLog:msg("patrolLift.contactMessage")
     local grpClass = Group.getByName(grpName)
     local route = {}
     local freq = patrolLift.freq
@@ -644,15 +665,22 @@ end
 --S_EVENT_KILL = {id = 28,time = Time,initiator = Unit,weapon = Weapon,target = Unit,weapon_name = string,}
 patrolLift.dead = {}
 function patrolLift.dead:onEvent(event)
-    if event.id == 28 then
+    if event.id == world.event.S_EVENT_UNIT_LOST then
+        return true
+    end
+    if event.id == world.event.S_EVENT_KILL then
+        myLog:msg("event dead")
         local status, err = pcall(function()
             patrolLift.deadHandler(event)
         end)
         if not status then 
             myLog:msg(err)
             trigger.action.outText(err , 10 , false)
+            return true
         end
+        myLog:msg("event done.")
     end
+    return true
 end
 world.addEventHandler(patrolLift.dead)
 
@@ -664,25 +692,26 @@ function patrolLift.deadHandler(event)
     local deadC = ""
     status, error = pcall(function()
         deadC = deadU:getCoalition()
+        local points = 1
+        if deadC == 2 then -- deadC == 2 dead blue unit
+            if Unit.hasAttribute(deadU , "Planes") or Unit.hasAttribute(deadU , "Helicopters") then
+                points = 1 * patrolLift.pointsPerAC
+            end
+            patrolLift.redPoints = patrolLift.redPoints + points
+            patrolLift.spawnFromPoints()
+        else -- dead red unit
+            local killer = event.initiator
+            if Unit.hasAttribute(killer , "Planes") or Unit.hasAttribute(killer , "Helicopters") then
+                patrolLift.AaPoints = patrolLift.AaPoints + 1
+                patrolLift.spawnFromPoints()
+
+            end
+        end
     end)
     if not status then
         return false
     end
-    local points = 1
-    if deadC == 2 then -- deadC == 2 dead blue unit
-        if Unit.hasAttribute(deadU , "Planes") or Unit.hasAttribute(deadU , "Helicopters") then
-            points = 1 * patrolLift.pointsPerAC
-        end
-        patrolLift.redPoints = patrolLift.redPoints + points
-        patrolLift.spawnFromPoints()
-    else -- dead red unit
-        local killer = event.initiator
-        if Unit.hasAttribute(killer , "Planes") or Unit.hasAttribute(killer , "Helicopters") then
-            patrolLift.AaPoints = patrolLift.AaPoints + 1
-            patrolLift.spawnFromPoints()
-            
-        end
-    end
+
 end
 
 function patrolLift.spawnFromPoints()
@@ -760,7 +789,8 @@ end
 --S_EVENT_MARK REMOVE = { id = S_EVENT_MARK_REMOVE, idx = idxMark(IDMark), time = Time, initiator = Unit, coalition = -1 (or RED/BLUE), groupID = -1 (or ID), text = markText, pos = vec3}
 patrolLift.markRemove = {}
 function patrolLift.markRemove:onEvent(event)
-    if event.id == 27 then
+    if event.id and event.id == 27 then
+        myLog:msg("event mark removed")
         local commandString = event.text
         local commandStrings = commandString:split(",")
         if string.find(commandString, 'extract') then
@@ -869,6 +899,24 @@ function patrolLift.Commands.patrolGroup(groupName)
     patrolLift.patrolBlue(gC)
 end
 
+-- S_EVENT_MARK CHANGE = {id = 26, idx = number markId, time = Abs time, initiator = Unit, coalition = number coalitionId, groupID = number groupId, text = string markText, pos = vec3}
+patrolLift.markAdd = {}
+function patrolLift.markAdd:onEvent(event)
+    if event.id and event.id == 26 then
+        myLog:msg("event mark add")
+        trigger.action.outText("MARK CHANGED" , 10 , false)
+        local commandString = event.text
+        if string.find(commandString, 'pathfinder') then
+            marker = {}
+            marker['idx'] = event.idx
+            marker['pos'] = event.pos
+            marker['text'] = event.text
+            table.insert(pathfinder.markers,marker)
+        end
+    end
+end
+world.addEventHandler(patrolLift.markAdd)
+
 trigger.action.outText("patrolLift loaded." , 10 , false)
 patrolLift.init()
 
@@ -878,6 +926,7 @@ if not pathfinder then pathfinder = {} end
 pathfinder.assignedGroups = {}
 pathfinder.debug = false
 pathfinder.marknum = 1
+pathfinder.markers = {}
 if not pathfinder.zones then pathfinder.zones = {} end
 function pathfinder.add_zone(name, x, y, radius)
     if trigger.misc.getZone(name) then return trigger.misc.getZone(name) end
@@ -903,11 +952,14 @@ function pathfinder.removeTrees(unitNameOrPos,radius)
     local num = 5
     local dirEach = 2*math.pi/num
     local points = {}
+    if type(unitNameOrPos) == "string" then
+        unitNameOrPos = Unit.getByName(unitNameOrPos):getPosition().p
+    end
     for i=1,num do
         local rand = math.random(10,75)
         local pos1 =  {
-            x = ((math.cos(i*dirEach) * rand) + pos.x),
-            z = ((math.sin(i*dirEach) * rand) + pos.z),
+            x = ((math.cos(i*dirEach) * rand) + unitNameOrPos.x),
+            z = ((math.sin(i*dirEach) * rand) + unitNameOrPos.z),
             y = 0
         }
         pos1.y = land.getHeight({['x']=pos1.x,['y']=pos1.z})
@@ -923,9 +975,7 @@ function pathfinder.removeTrees(unitNameOrPos,radius)
         mist.scheduleFunction(trigger.action.explosion, {points[i],1}, timer.getTime() + 1 + (i/10))
         --trigger.action.explosion(points[i],1)
     end
-    if type(unitNameOrPos) == "string" then
-        unitNameOrPos = Unit.getByName(unitNameOrPos):getPosition().p
-    end
+
     local new_zone = pathfinder.add_zone("pathfinder"..#pathfinder.zones+1, unitNameOrPos.x, unitNameOrPos.z, radius)
     local addZone = trigger.misc.getZone(new_zone.name)
     for k,v in pairs(addZone) do
@@ -1034,6 +1084,99 @@ function pathfinder.route(group)
     end
     return route
 end
+
+function pathfinder.route2(group)
+    if type(group) == "string" then
+        group = Group.getByName(group)
+    end
+    local name = group:getName()
+    local lead = group:getUnit(1)
+    pos = lead:getPosition().p
+
+    wpPos = false
+    nearest = {}
+    nearestDist = 1000
+    for k,v in pairs (pathfinder.markers) do
+        local markerPos = v['pos']
+        local dist = mist.utils.get2DDist(pos, markerPos)
+        if dist < nearestDist then
+            nearest = v
+            wpPos = v['pos']
+        end
+    end
+
+    local points = {}
+    points[1] = pos
+    lastPos = points[1]
+    if wpPos then
+        points[2] = wpPos
+        lastPos = wpPos
+    end
+
+    local numWp = 3
+    local dirEach = 2*math.pi/numWp
+
+    for i=1,numWp do
+        local pos1 =  {
+            x = ((math.cos(i*dirEach) * 300) + lastPos.x),
+            z = ((math.sin(i*dirEach) * 300) + lastPos.z),
+            y = 0
+        }
+        table.insert(points,pos1)
+    end
+    local safePos = {}
+    safePos.x = lastPos.x + 500
+    safePos.y = lastPos.y
+    safePos.z = lastPos.z
+    table.insert(points,safePos)
+    table.insert(points,lastPos)
+
+    if pathfinder.debug then
+        trigger.action.markToAll(pathfinder.marknum, "0", lastPos, false, "")
+        pathfinder.marknum = pathfinder.marknum + 1
+        for i=1,#points do
+            trigger.action.markToAll(pathfinder.marknum, i, points[i], false, "")
+            pathfinder.marknum = pathfinder.marknum + 1
+        end
+    end
+    local route = {}
+    for i=1,#points do
+        route[i] = mist.ground.buildWP(points[i] , "Custom" ,40)
+        route[i]["action"] = "Custom"
+        route[i]['type'] = "Fly Over Point"
+    end
+    local posString = string.format("{['x'] = %s, ['y'] = %s, ['z'] = %s}",lastPos['x'],lastPos['y'],lastPos['z'])
+    commandString = string.format("local lastPos = %s;mist.scheduleFunction(pathfinder.removeTrees, {lastPos, %s}, timer.getTime() + 30, 900, timer.getTime() + 70)",posString,"50")
+    route[#route-1]["task"] = {
+        ["id"] = "ComboTask",
+        ["params"] = {
+            ["tasks"] = {
+                [1] = {
+                    ["number"] = 1,
+                    ["auto"] = false,
+                    ["id"] = "WrappedAction",
+                    ["enabled"] = true,
+                    ["params"] = {
+                        ["action"] = {
+                            ["id"] = "Script",
+                            ["params"] = {
+                                ["command"] = commandString,
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    }
+    route[#route] = patrolLift.addEmbarkToWp(route[#route],name)
+    mist.scheduleFunction(mist.goRoute, {group,route}, timer.getTime() + 1, 900, timer.getTime() + 10)
+    if STTS then
+        STTS.TextToSpeech("PATHFINDER SETTING CHARGES!","116","AM","1.0","SRS",2,nil,-1,"male")
+    end
+    return route
+end
+
+
 function pathfinder.init()
     pathfinder.iterateZones()
 end

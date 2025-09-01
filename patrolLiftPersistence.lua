@@ -113,62 +113,72 @@ function saveStatics.getAllStatics(staticFile)
 	SaveStatics={}
 	blueStatics = coalition.getStaticObjects(2)
 	for i=1,#blueStatics do
-		local name = blueStatics[i]:getName()
-		local dead = false
-		local sataticPos = blueStatics[i]:getPosition().p
-		local objType = blueStatics[i]:getTypeName()
-		--local groupid = getGroup(blueStatics[i])
-		local cat = blueStatics[i]:getCategory()
-		--local data = mist.getGroupData(name)
-		--local heading = mist.getHeading(StaticObject.getByName("name"), true)
-		local pos3 = blueStatics[i]:getPosition()
-		local heading = math.atan2(pos3.x.z, pos3.x.x)
-		
-		if StaticObject.getLife(blueStatics[i]) < 1 then
-			dead = true
+		status, error = pcall(function()
+			local name = blueStatics[i]:getName()
+			local dead = false
+			local sataticPos = blueStatics[i]:getPosition().p
+			local objType = blueStatics[i]:getTypeName()
+			--local groupid = getGroup(blueStatics[i])
+			local cat = blueStatics[i]:getCategory()
+			--local data = mist.getGroupData(name)
+			--local heading = mist.getHeading(StaticObject.getByName("name"), true)
+			local pos3 = blueStatics[i]:getPosition()
+			local heading = math.atan2(pos3.x.z, pos3.x.x)
+			if StaticObject.getLife(blueStatics[i]) < 1 then
+				dead = true
+			end
+			allStatics[name] = {}
+			allStatics[name]["name"] = name
+			allStatics[name]["dead"] = dead
+			allStatics[name]["obj"] = blueStatics[i]
+			allStatics[name]["pos"] = sataticPos
+			allStatics[name]["type"] = objType
+			allStatics[name]["heading"] = heading
+			--allStatics[name]["groupId"] = groupid
+			allStatics[name]["cat"] = cat
+			--allStatics[name]["data"] = data
+			allStatics[name]["Country"] = blueStatics[i]:getCountry()
+		end)
+		if not status then
+			myLog:msg(error)
 		end
-		allStatics[name] = {}
-		allStatics[name]["name"] = name
-		allStatics[name]["dead"] = dead
-		allStatics[name]["obj"] = blueStatics[i]
-		allStatics[name]["pos"] = sataticPos
-		allStatics[name]["type"] = objType
-		allStatics[name]["heading"] = heading
-		--allStatics[name]["groupId"] = groupid
-		allStatics[name]["cat"] = cat
-		--allStatics[name]["data"] = data
-		allStatics[name]["Country"] = blueStatics[i]:getCountry()
 	end
 	redStatics = coalition.getStaticObjects(2)
 	for i=1,#redStatics do
-		local name = redStatics[i]:getName()
-		local dead = false
-		local sataticPos = redStatics[i]:getPosition().p
-		local objType = redStatics[i]:getTypeName()
-		--local groupid = getGroup(redStatics[i])
-		local cat = redStatics[i]:getCategory()
-		--local data = mist.getGroupData(name)
-		--local heading = mist.getHeading(StaticObject.getByName("name"), true)
-		local pos3 = redStatics[i]:getPosition()
-		local heading = math.atan2(pos3.x.z, pos3.x.x)
-		
-		if StaticObject.getLife(redStatics[i]) < 1 then
-			dead = true
+		status, error = pcall(function()
+			local name = redStatics[i]:getName()
+			local dead = false
+			local sataticPos = redStatics[i]:getPosition().p
+			local objType = redStatics[i]:getTypeName()
+			--local groupid = getGroup(redStatics[i])
+			local cat = redStatics[i]:getCategory()
+			--local data = mist.getGroupData(name)
+			--local heading = mist.getHeading(StaticObject.getByName("name"), true)
+			local pos3 = redStatics[i]:getPosition()
+			local heading = math.atan2(pos3.x.z, pos3.x.x)
+
+			if StaticObject.getLife(redStatics[i]) < 1 then
+				dead = true
+			end
+			allStatics[name] = {}
+			allStatics[name]["name"] = name
+			allStatics[name]["dead"] = dead
+			allStatics[name]["obj"] = redStatics[i]
+			allStatics[name]["pos"] = sataticPos
+			allStatics[name]["type"] = objType
+			allStatics[name]["heading"] = heading
+			--allStatics[name]["groupId"] = groupid
+			allStatics[name]["cat"] = cat
+			--allStatics[name]["data"] = data
+			allStatics[name]["Country"] = redStatics[i]:getCountry()
+		end)
+		if not status then
+			myLog:msg(error)
 		end
-		allStatics[name] = {}
-		allStatics[name]["name"] = name
-		allStatics[name]["dead"] = dead
-		allStatics[name]["obj"] = redStatics[i]
-		allStatics[name]["pos"] = sataticPos
-		allStatics[name]["type"] = objType
-		allStatics[name]["heading"] = heading
-		--allStatics[name]["groupId"] = groupid
-		allStatics[name]["cat"] = cat
-		--allStatics[name]["data"] = data
-		allStatics[name]["Country"] = redStatics[i]:getCountry()
 	end
 	staticString = saveStatics.tableSerializer(allStatics,recurseBool)
 	saveStatics.writeFile(staticString, staticFile)
+	myLog:msg("getAllStatics done")
 end
 
 function saveStatics.fileExistStatic(staticFile)
@@ -241,18 +251,25 @@ function saveStatics.getScriptVals(file)
 	myLog:msg("getScriptVals")
 	saveStatics.scriptVals = {}
 	for k,v in pairs(saveStatics.valsToGet) do
-		local class = v[1]
-		local val = v[2]
-		local key = tostring(class) .. "." .. tostring(val)
-		if _G[class] then
-			local Gval = _G[class][val]
-			if not saveStatics.scriptVals[class] then
-				saveStatics.scriptVals[class] = {}
+		status, error = pcall(function()
+			local class = v[1]
+			local val = v[2]
+			local key = tostring(class) .. "." .. tostring(val)
+			myLog:msg(key)
+			if _G[class] then
+				local Gval = _G[class][val]
+				if not saveStatics.scriptVals[class] then
+					saveStatics.scriptVals[class] = {}
+				end
+				saveStatics.scriptVals[class][val] = Gval
 			end
-			saveStatics.scriptVals[class][val] = Gval
+		end)
+		if not status then
+			myLog:msg(error)
 		end
 	end
 	saveStatics.writeFile(saveStatics.scriptVals,file)
+	myLog:msg("getScriptVals done.")
 end
 
 function saveStatics.fileExistScripts(file)
@@ -279,6 +296,7 @@ end
 
 
 function saveStatics.getBlueGroups(unitFile)
+	myLog:msg("saveStatics.getBlueGroups")
 	SaveBlueUnits = {}
 	bluegroups = coalition.getGroups(2 , 2)
 	for i=1, #bluegroups do
@@ -311,6 +329,7 @@ function saveStatics.getBlueGroups(unitFile)
 	
 	unitString = saveStatics.tableSerializer(blueUnits)
 	saveStatics.writeFile(unitString, unitFile)
+	myLog:msg("saveStatics.getBlueGroups done.")
 end
 
 function saveStatics.fileExistUnits(unitFile)
