@@ -10,3 +10,10 @@ The elevator pitch is;
 - Various other scripting tricks
 
 
+Files Breakdown:
+- Battle Saipan WWII.miz - The primary mission on Marianas WWII
+- Battle Saipan.miz - the pre-WWII release version, needs scripts update
+- CTLD_persist.lua - custom verision of CTLD with persistence related mods
+- buildAWall.lua - a script to build walls by copying the route of a group
+- PatrolLift.lua - script handling most of the mission stuff
+- PatrolLifePersistence.lua - the custom persistence script. 
